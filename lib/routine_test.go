@@ -412,6 +412,30 @@ func TestDeleteRoutine_SendsApplyToAll(t *testing.T) {
 	}
 }
 
+// TestDeleteRoutine_NormalizesCompositeID guards against a plausible user
+// mistake: copying a raw composite occurrence ID (as returned by a
+// date-ranged chore list) into routine delete, instead of the clean base ID
+// ListRoutines itself returns. DeleteRoutine should strip the date/time
+// suffix rather than forwarding it verbatim.
+func TestDeleteRoutine_NormalizesCompositeID(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/frames/frame1/chores/97871488" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	old := SkylightURL
+	SkylightURL = srv.URL + "/api"
+	defer func() { SkylightURL = old }()
+
+	client, _ := NewClientWithToken("u", "t")
+	if err := client.DeleteRoutine(context.Background(), "frame1", "97871488-2026-08-10-0600"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestDeleteRoutine_ServerError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
