@@ -31,16 +31,21 @@ type Routine struct {
 	NextOccurrenceDate string `json:"next_occurrence_date,omitempty"`
 }
 
-// RoutineData holds the fields for creating a routine. CategoryID is a
-// single assignee: create_multiple fans out one chore record per category
-// ID with no server-provided key correlating the resulting siblings back
-// together, so multi-assignee routines aren't supported yet -- the type
-// only allows one.
+// RoutineData holds the fields for creating a routine. It is never
+// marshaled directly -- CreateRoutine converts it into a ChoreData before
+// sending, so it has no json tags of its own (a json:"category_id" tag
+// here would be misleading: the wire field CreateRoutine actually sends is
+// ChoreData's plural category_ids, wrapping this single value).
+//
+// CategoryID is a single assignee: create_multiple fans out one chore
+// record per category ID with no server-provided key correlating the
+// resulting siblings back together, so multi-assignee routines aren't
+// supported yet -- the type only allows one.
 type RoutineData struct {
-	Title      string `json:"title,omitempty"`
-	TimeOfDay  string `json:"time_of_day,omitempty"`
-	CategoryID string `json:"category_id,omitempty"`
-	StartDate  string `json:"start_date,omitempty"`
+	Title      string
+	TimeOfDay  string
+	CategoryID string
+	StartDate  string
 }
 
 // routineByHour maps the CLI/API's time-of-day vocabulary to the BYHOUR
@@ -156,9 +161,12 @@ func (c *Client) ListRoutines(ctx context.Context, frameID string) ([]Routine, e
 
 // DeleteRoutine deletes a routine. apply_to=all is required by the API for
 // any recurring chore -- without it, the request 400s with "you must have a
-// valid value for apply_to".
+// valid value for apply_to". routineID is normalized to its base chore ID,
+// so passing a raw composite occurrence ID (e.g. copied from a date-ranged
+// chore list instead of ListRoutines' own output) still works.
 func (c *Client) DeleteRoutine(ctx context.Context, frameID, routineID string) error {
-	req, err := newRequest(ctx, "DELETE", fmt.Sprintf("%s/frames/%s/chores/%s", c.effectiveURL(), pathSeg(frameID), pathSeg(routineID)))
+	baseID, _ := parseChoreID(routineID)
+	req, err := newRequest(ctx, "DELETE", fmt.Sprintf("%s/frames/%s/chores/%s", c.effectiveURL(), pathSeg(frameID), pathSeg(baseID)))
 	if err != nil {
 		return fmt.Errorf("failed to create delete routine request: %w", err)
 	}
